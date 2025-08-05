@@ -24,66 +24,82 @@ link_args = [
 cc = meson.get_compiler('c', native: false)
 m_dep = cc.find_library('m', required : false)
 
-# Adjust these libraries to use the right version for the board in use. The
-# defaults here are for the Redboard ATP.
-ambiq_lib = dependency('ambiq_rba_atp')
-asimple_lib = dependency('asimple_rba_atp')
+# Only create the executable if the target is something resembling the RedBoard
+if (host_machine.system() == 'none' and host_machine.cpu_family() == 'arm' and
+    host_machine.cpu() == 'cortex-m4')
 
-# This section is for building most of the program as a library
-lib_sources = files([
-  'src/example.c',
-])
+  # Adjust these libraries to use the right version for the board in use. The
+  # defaults here are for the Redboard ATP.
+  ambiq_lib = dependency('ambiq_rba_atp')
+  asimple_lib = dependency('asimple_rba_atp')
 
-includes = include_directories([
-  'include/example',
-])
+  # This section is for building most of the program as a library
+  lib_sources = files([
+    'src/example.c',
+  ])
 
-# Change this to false if you do not want to install library
-install_library = true
-lib = library(meson.project_name(),
-  lib_sources,
-  include_directories: includes,
-  c_args: c_args,
-  link_args: link_args,
-  install: install_library,
-)
+  includes = include_directories([
+    'include/example',
+  ])
 
-install_subdir('include', install_dir: '')
+  # Change this to false if you do not want to install library
+  install_library = true
+  lib = library(meson.project_name(),
+    lib_sources,
+    include_directories: includes,
+    c_args: c_args,
+    link_args: link_args,
+    install: install_library,
+  )
 
-if (install_library == true)
-  # Create a pkgconfig file
-  pkg = import('pkgconfig')
-  pkg.generate(lib, subdirs: ['', 'example'])
+  install_subdir('include', install_dir: '')
+
+  if (install_library == true)
+    # Create a pkgconfig file
+    pkg = import('pkgconfig')
+    pkg.generate(lib, subdirs: ['', 'example'])
+  endif
+
+
+  # Section defining the executable
+  sources = files([
+    'src/main.c',
+  ])
+
+  exe = executable(meson.project_name(),
+    sources,
+    link_with: lib,
+    dependencies: [ambiq_lib, m_dep, asimple_lib],
+    include_directories: includes,
+    c_args: c_args,
+    link_args: link_args + ['-T' + meson.project_source_root() / 'linker.ld']
+  )
+
+  # Custom flash target, to make it easier to program the RedBoard, requires
+  # objcopy
+  objcopy = find_program('objcopy')
+
+  bin = custom_target(
+    input : exe,
+    output : exe.name().split('.')[0] + '.bin',
+    command : [objcopy, '-O', 'binary', '@INPUT@', '@OUTPUT@', ],
+    build_by_default: true
+  )
+
+  svl_tools = find_program('svl-tools', required: false)
+
+  if svl_tools.found()
+    run_target('flash',
+      command : [svl_tools, '--port', get_option('tty'), '--baud', '921600',
+        'flash', '--binfile', bin, '-v'],
+      depends : bin,
+    )
+  else
+    run_target('flash',
+      command : ['python3', meson.project_source_root() / 'svl.py',
+        get_option('tty'), '-f',  bin, '-b', '921600', '-v'],
+      depends : bin,
+    )
+  endif
+
 endif
-
-
-# Section defining the executable
-sources = files([
-  'src/main.c',
-])
-
-exe = executable(meson.project_name(),
-  sources,
-  link_with: lib,
-  dependencies: [ambiq_lib, m_dep, asimple_lib],
-  include_directories: includes,
-  c_args: c_args,
-  link_args: link_args + ['-T' + meson.source_root() / 'linker.ld']
-)
-
-# Custom flash target, to make it easier to program the RedBoard, requires
-# objcopy
-objcopy = find_program('objcopy')
-
-bin = custom_target(
-  input : exe,
-  output : exe.name().split('.')[0] + '.bin',
-  command : [objcopy, '-O', 'binary', '@INPUT@', '@OUTPUT@', ],
-  build_by_default: true
-)
-
-run_target('flash',
-  command : ['python3', meson.source_root() / 'svl.py',
-    get_option('tty'), '-f',  bin, '-b', '921600', '-v'],
-  depends : bin,
-)
