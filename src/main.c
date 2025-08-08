@@ -5,24 +5,24 @@
 
 #include <example.h>
 
-#include <uart.h>
 #include <syscalls.h>
+#include <uart.h>
 
-#include "am_mcu_apollo.h"
 #include "am_bsp.h"
+#include "am_mcu_apollo.h"
 #include "am_util.h"
 
 #include <sys/time.h>
 
-#include <string.h>
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 struct uart uart;
 
-__attribute__((constructor))
+[[gnu::constructor]]
 static void redboard_init(void)
 {
 	// Prepare MCU by init-ing clock, cache, and power level operation
@@ -40,7 +40,7 @@ static void redboard_init(void)
 	am_hal_interrupt_master_enable();
 }
 
-__attribute__((destructor))
+[[gnu::destructor]]
 static void redboard_shutdown(void)
 {
 	// Any destructors/code that should run when main returns should go here
